@@ -52,12 +52,18 @@ def extract_text_from_pdf(pdf_file):
     except ImportError:
         raise RuntimeError("请 pip install pdfplumber")
 
-def get_default_prompt(text):
-    # 可以根据token限制自行截断
-    return DEFAULT_PROMPT_TEMPLATE.replace("{text}", text[:3500])
+def make_prompt(text, user_prompt=None):
+    if user_prompt and user_prompt.strip():
+        # 若填写了自定义prompt，则用自定义prompt，内容自己放置{text}或自动追加
+        if "{text}" in user_prompt:
+            return user_prompt.replace("{text}", text[:3500])
+        else:
+            return user_prompt + "\n\n" + text[:3500]
+    else:
+        return DEFAULT_PROMPT_TEMPLATE.replace("{text}", text[:3500])
 
 def stream_gpt_response(prompt):
-    # 流式yield gpt4.1响应
+    # yield流式token
     response = client.chat.completions.create(
         model="gpt-4.1-2025-04-14",
         messages=[{"role": "user", "content": prompt}],
@@ -68,19 +74,26 @@ def stream_gpt_response(prompt):
         if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
 
+def batch_stream(urls: list, prompt: Optional[str]):
+    for idx, url in enumerate(urls):
+        try:
+            pdf_path = download_arxiv_pdf(url)
+            text = extract_text_from_pdf(pdf_path)
+            os.unlink(pdf_path)
+        except Exception as e:
+            yield f"\n=== [{idx+1}] {url} 报错: {str(e)} ===\n"
+            continue
+
+        prompt_str = make_prompt(text, prompt)
+        yield f"\n=== [{idx+1}] {url} 分析结果 ===\n"
+        for res in stream_gpt_response(prompt_str):
+            yield res
+        yield "\n"
+
 @app.post("/read_papers/")
 async def read_papers(request: Request):
     data = await request.json()
     urls = data.get("urls", [])
     prompt = data.get("prompt")
-    all_contents = []
-    for url in urls:
-        pdf_path = download_arxiv_pdf(url)
-        text = extract_text_from_pdf(pdf_path)
-        all_contents.append(text)
-        os.unlink(pdf_path)
-    full_text = "\n\n".join(all_contents)
-    prompt_str = prompt or get_default_prompt(full_text)
-    return StreamingResponse(stream_gpt_response(prompt_str), media_type="text/plain")
-
-# 示例run: uvicorn main:app --reload
+    # 多个 stream输出，逐条论文逐条推送
+    return StreamingResponse(batch_stream(urls, prompt), media_type="text/plain")
