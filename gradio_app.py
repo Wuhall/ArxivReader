@@ -1,5 +1,5 @@
 import gradio as gr
-from main import download_arxiv_pdf, extract_text_from_pdf, make_prompt, client
+from main import download_arxiv_pdf, extract_text_from_pdf, make_prompt, stream_llm_response
 import os
 
 def gradio_read_papers(urls_text, prompt):
@@ -15,23 +15,16 @@ def gradio_read_papers(urls_text, prompt):
             continue
         prompt_str = make_prompt(text, prompt)
         result = ""
-        response = client.chat.completions.create(
-            model="gpt-4.1-2025-04-14",
-            messages=[{"role": "user", "content": prompt_str}],
-            max_tokens=2048,
-            stream=True
-        )
-        for chunk in response:
-            if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
-                result += chunk.choices[0].delta.content
+        for chunk in stream_llm_response(prompt_str):
+            result += chunk
         outputs.append(f"【第{idx+1}篇】{url}\n{result}")
     return "\n\n".join(outputs)
 
 with gr.Blocks() as demo:
-    gr.Markdown("## ArXiv Paper Reader · 多论文批量分析（GPT-4.1）")
+    gr.Markdown("## ArXiv Paper Reader · 论文批量分析（GPT-4.1）")
     urls_box = gr.Textbox(lines=5, label="论文链接(每行一个，不要空行)")
     prompt_box = gr.Textbox(lines=3, label="自定义Prompt（可选，支持{text}占位）")
-    output = gr.Textbox(lines=20, label="全部论文结果", interactive=True)
+    output = gr.Textbox(lines=15, label="全部论文结果", interactive=True)
     btn = gr.Button("开始分析")
     btn.click(
         fn=gradio_read_papers,

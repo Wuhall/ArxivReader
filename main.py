@@ -5,13 +5,23 @@ from fastapi import FastAPI, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-import openai
 from typing import Optional, List
 
 load_dotenv()
 app = FastAPI()
 
-client = openai.OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+# ---- 配置读取 ----
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'openai').lower()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-2025-04-14")
+
+ALIYUN_MODEL_KEY = os.getenv("ALIYUN_MODEL_KEY")
+ALIYUN_MODEL_NAME = os.getenv("ALIYUN_MODEL_NAME", "deepseek-r1")
+
+# OpenAI/阿里 客户端复用变量
+_openai_client = None
+_ali_client = None
 
 DEFAULT_PROMPT_TEMPLATE = (
     "请帮我阅读以下论文，"
@@ -54,7 +64,6 @@ def extract_text_from_pdf(pdf_file):
 
 def make_prompt(text, user_prompt=None):
     if user_prompt and user_prompt.strip():
-        # 若填写了自定义prompt，则用自定义prompt，内容自己放置{text}或自动追加
         if "{text}" in user_prompt:
             return user_prompt.replace("{text}", text[:3500])
         else:
@@ -62,17 +71,57 @@ def make_prompt(text, user_prompt=None):
     else:
         return DEFAULT_PROMPT_TEMPLATE.replace("{text}", text[:3500])
 
-def stream_gpt_response(prompt):
-    # yield流式token
-    response = client.chat.completions.create(
-        model="gpt-4.1-2025-04-14",
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=2048,
-        stream=True
-    )
-    for chunk in response:
-        if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
-            yield chunk.choices[0].delta.content
+# ---------- LLM统一响应 ----------
+def get_openai_client():
+    global _openai_client
+    if _openai_client is None:
+        import openai
+        _openai_client = openai.OpenAI(api_key=OPENAI_API_KEY)
+    return _openai_client
+
+def get_ali_client():
+    global _ali_client
+    if _ali_client is None:
+        import openai # 官方兼容openai客户端
+        _ali_client = openai.OpenAI(
+            api_key=ALIYUN_MODEL_KEY,
+            base_url="https://dashscope.aliyuncs.com/compatible-mode/v1"
+        )
+    return _ali_client
+
+def stream_llm_response(prompt):
+    """根据 LLM_PROVIDER 调用不同平台，yield 内容"""
+    if LLM_PROVIDER == "openai":
+        client = get_openai_client()
+        model = OPENAI_MODEL
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2048,
+            stream=True
+        )
+        for chunk in response:
+            if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+
+    elif LLM_PROVIDER == "ali":
+        client = get_ali_client()
+        model = ALIYUN_MODEL_NAME
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=2048,
+            stream=True
+        )
+        for chunk in response:
+            delta = chunk.choices[0].delta
+            # 阿里模型有reasoning_content和content二者, 只输出最终回复/思考
+            # 可根据实际需求自定义（默认只拼content）
+            if hasattr(delta, 'content') and delta.content:
+                yield delta.content
+
+    else:
+        raise RuntimeError("不支持的LLM_PROVIDER: 仅支持openai和ali")
 
 def batch_stream(urls: list, prompt: Optional[str]):
     for idx, url in enumerate(urls):
@@ -86,7 +135,7 @@ def batch_stream(urls: list, prompt: Optional[str]):
 
         prompt_str = make_prompt(text, prompt)
         yield f"\n=== [{idx+1}] {url} 分析结果 ===\n"
-        for res in stream_gpt_response(prompt_str):
+        for res in stream_llm_response(prompt_str):
             yield res
         yield "\n"
 
@@ -95,5 +144,4 @@ async def read_papers(request: Request):
     data = await request.json()
     urls = data.get("urls", [])
     prompt = data.get("prompt")
-    # 多个 stream输出，逐条论文逐条推送
     return StreamingResponse(batch_stream(urls, prompt), media_type="text/plain")

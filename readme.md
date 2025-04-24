@@ -35,6 +35,9 @@ pip install -r requirements.txt
 ## How to launch
 
 First, configure your `.env` with your OPENAI_API_KEY.
+```
+cp .env.example .env
+```
 
 To start the Gradio visual interface:
 
@@ -63,8 +66,9 @@ ArxivReader 是一个轻量级的 API 和可视化服务，利用 GPT-4.1 大模
 - 支持批量输入 arXiv 链接
 - 自动下载并解析 PDF
 - 支持自定义阅读 prompt，也可使用内置默认 prompt
-- 基于 GPT-4.1（API Key 需填在 `.env` 文件中）
+- 支持 GPT-4.1（API Key 需填在 `.env` 文件中）
 - 提供 RESTful API 与可视化交互（Gradio 界面）
+- 支持阿里云百炼API，接入DeepSeek-R1（API Key 需填在 `.env` 文件中）
 
 ## 环境依赖
 
@@ -86,6 +90,9 @@ pip install -r requirements.txt
 ## 启动方式
 
 首先配置 `.env` 文件，填入你的 OPENAI_API_KEY。
+```
+cp .env.example .env
+```
 
 运行 Gradio 可视化界面：
 
