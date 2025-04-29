@@ -97,7 +97,7 @@ cp .env.example .env
 运行 Gradio 可视化界面：
 
 ```bash
-python gradio.py
+gradio gradio_app.py
 ```
 
 或如需 RESTful 后端：
