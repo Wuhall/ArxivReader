@@ -24,10 +24,17 @@ _openai_client = None
 _ali_client = None
 
 DEFAULT_PROMPT_TEMPLATE = (
-    "请帮我阅读以下论文，"
-    "并以结构化要点输出：\n"
-    "1. 核心问题\n2. 方法方案\n3. 创新点\n4. 结果评价\n5. 适用场景与局限\n"
-    "这是论文内容：\n\n{text}"
+    """  
+## 指令：严格按论文原始结构（Abstract/Introduction/Method等）逐段解析，每部分包含：  
+1. 总结（1-2句中文，保留关键术语）  
+2. 分析（逻辑漏洞/隐藏信息/领域关联）  
+        3. 标注位置（例：`Page 5, Table 2`）  
+
+## 输出格式：markdown，包含章节标题和位置标注。  
+
+## 示例指令：  
+"从Abstract开始解析，输出简体中文。""
+    "这是论文内容：\n\n{text}"""
 )
 
 class UrlsModel(BaseModel):
