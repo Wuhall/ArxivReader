@@ -42,7 +42,7 @@ cp .env.example .env
 To start the Gradio visual interface:
 
 ```bash
-python gradio.py
+gradio gradio_app.py 
 ```
 
 Or for RESTful backend:
