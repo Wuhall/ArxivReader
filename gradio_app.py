@@ -24,7 +24,7 @@ with gr.Blocks() as demo:
     gr.Markdown("## ArXiv Paper Reader · 论文批量分析（GPT-4.1）")
     urls_box = gr.Textbox(lines=5, label="论文链接(每行一个，不要空行)")
     prompt_box = gr.Textbox(lines=3, label="自定义Prompt（可选，支持{text}占位）")
-    output = gr.Textbox(lines=15, label="全部论文结果", interactive=True)
+    output = gr.Markdown(label="分析结果")
     btn = gr.Button("开始分析")
     btn.click(
         fn=gradio_read_papers,
